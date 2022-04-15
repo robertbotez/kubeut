@@ -1,0 +1,6 @@
+- name: find helm path
+  shell: which helm
+  register: helm_path
+
+- name: delete helm files
+  shell: rm {{ helm_path.stdout_lines[0] }}

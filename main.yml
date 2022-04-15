@@ -1,0 +1,76 @@
+- name: Setting up pre-requisites
+  hosts: master, workers
+  become: true
+  gather_facts: true
+  vars_files:
+    - vars/main.yml
+  tasks:
+    - name: Setting up system
+      import_tasks:
+        tasks/redhat-based/01_prereqs_yum.yml
+      when: ansible_os_family == "RedHat" and ansible_distribution == "CentOS" or ansible_os_family == "Rocky"
+    - name: Setting up system
+      import_tasks:
+        tasks/debian-based/01_prereqs_ubuntu.yml
+      when: ansible_os_family == "Debian" and ansible_distribution == "Ubuntu"
+    - name: Setting up system
+      import_tasks:
+        tasks/debian-based/01_prereqs_debian.yml
+      when: ansible_os_family == "Debian" and ansible_distribution == "Debian"
+    - name: Setting up system
+      import_tasks:
+        tasks/redhat-based/01_prereqs_dnf.yml
+      when: ansible_os_family == "RedHat" and ansible_distribution == "Fedora"
+
+- name: Setting up system
+  hosts: bastions
+  become: true
+  gather_facts: true
+  vars_files:
+    - vars/main.yml
+  tasks:
+    - name: Setting up system
+      import_tasks:
+        tasks/prereqs_lb.yml
+      when: kubernetes.ha | bool == true
+
+- name: Setting up control plane
+  hosts: leadMaster
+  become: true
+  vars_files:
+    - vars/main.yml
+  tasks:
+    - name: Setting up control plane
+      import_tasks:
+        tasks/02_control_plane.yml
+      when: not kubernetes.ha
+
+- name: Setting up control plane
+  hosts: leadMaster
+  become: true
+  vars_files:
+    - vars/main.yml
+  tasks:
+    - name: Setting up control plane
+      import_tasks:
+        tasks/02_control_plane_ha.yml
+      when: kubernetes.ha | bool == true
+
+- name: Join secondary master
+  hosts: secondaryMasters
+  become: true
+  vars_files:
+    - vars/main.yml
+  tasks:
+    - name: Joining the cluster
+      import_tasks:
+        tasks/join_masters.yml
+      when: kubernetes.ha | bool == true
+
+- name: Setting up worker nodes
+  hosts: workers
+  become: true
+  tasks:
+    - name: Setting up control plane
+      import_tasks:
+        tasks/03_worker_node.yml

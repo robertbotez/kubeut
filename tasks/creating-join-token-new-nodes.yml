@@ -1,0 +1,11 @@
+- name: Creating workers join token
+  shell: |
+    kubeadm token create --ttl={{ kubeadm.join.ttl }} \
+                         --description="{{ kubeadm.join.description }}" \
+                         --print-join-command
+  register: join_token
+  run_once: true
+
+- name: Set fact
+  set_fact:
+    worker_join_token: "{{ join_token.stdout_lines }}"

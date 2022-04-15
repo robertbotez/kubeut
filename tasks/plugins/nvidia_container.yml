@@ -1,0 +1,79 @@
+---
+- hosts: workers
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../../vars/main.yml
+  tasks:
+  - name: install headers matching kernel
+    apt:
+      pkg:
+      - linux-headers-{{ansible_kernel}}
+
+  - name: setup cuda repo and nvidia runtime
+    block:
+      - name: register current distribution for cuda repo
+        shell: echo $(. /etc/os-release;echo $ID$VERSION_ID | sed -e 's/\.//g')
+        register: distribution_var
+
+      - name: register current distribution for nvidia repo
+        shell: echo $(. /etc/os-release;echo $ID$VERSION_ID)
+        register: distribution_var_nvidia
+
+      - name: set var cuda distribution
+        set_fact:
+          distribution: "{{distribution_var.stdout_lines[0] }}"
+
+      - name: set var nvidia distribution
+        set_fact:
+          distribution_nvidia: "{{distribution_var_nvidia.stdout_lines[0] }}"
+
+          # - name: get the repo
+          #command: wget "{{ cuda_repository }}"
+
+          #- name: move the downloaded repo
+          #command: mv cuda-{{distribution}}.pin /etc/apt/preferences.d/cuda-repository-pin-600
+
+          #- name: add cuda gpg key
+          #apt_key:
+          #url: "{{ cuda_gpgkey }}"
+
+          #- name: add repo
+          #apt_repository:
+          #repo: "{{ cuda_baseurl }}"
+          #state: present
+
+      - name: add nvidia runtime gpg key
+        apt_key:
+          url: "{{ docker.gpgkey_nvidia }}"
+
+      - name: add nvidia runtime repo
+        shell: curl -s -L https://nvidia.github.io/nvidia-docker/{{distribution_nvidia}}/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+        args:
+          warn: no
+
+  - name: update apt
+    apt: update_cache=yes force_apt_get=yes cache_valid_time=3600
+
+  - name: Install nvidia docker
+    apt: name={{ item }} state=latest update_cache=yes
+    loop: ['nvidia-docker2']
+
+  - name: backup docker daemon file
+    ansible.builtin.copy:
+      remote_src: yes
+      src: /etc/docker/daemon.json
+      dest: /etc/docker/daemon_old.json
+
+
+  - name: update Docker daemon config
+    template:
+      src: "../templates/daemon.json.j2"
+      dest: "/etc/docker/daemon.json"
+
+  - name: Restart Docker service
+    systemd:
+      name: docker
+      daemon_reload: yes
+      enabled: true
+      state: restarted

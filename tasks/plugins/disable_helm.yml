@@ -1,0 +1,8 @@
+---
+- hosts: leadMaster
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../../vars/main.yml
+  tasks:
+    - include: disable_helm_tasks.yml

@@ -1,0 +1,28 @@
+---
+- hosts: leadMaster
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../../vars/main.yml
+  tasks:
+    - name: disable ingress
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      ignore_errors: yes
+      shell: |
+        kubectl delete -n ingress-nginx service ingress-nginx-controller-admission --grace-period=0 --force
+        kubectl delete -n ingress-nginx service ingress-nginx-controller --grace-period=0 --force
+        kubectl delete -n ingress-nginx deployment ingress-nginx-controller --grace-period=0 --force
+        kubectl delete -n ingress-nginx job.batch/ingress-nginx-admission-create --grace-period=0 --force
+        kubectl delete -n ingress-nginx job.batch/ingress-nginx-admission-patch --grace-period=0 --force
+        kubectl delete serviceaccount/ingress-nginx
+        kubectl delete clusterrole ingress-nginx
+        kubectl delete clusterrolebinding ingress-nginx
+        kubectl delete role ingress-nginx -n ingress-nginx
+        kubectl delete rolebinding ingress-nginx -n ingress-nginx
+        kubectl delete validatingwebhookconfiguration ingress-nginx-admission
+        kubectl delete serviceaccount ingress-nginx-admission
+        kubectl delete clusterrole ingress-nginx-admission
+        kubectl delete role ingress-nginx-admission -n ingress-nginx
+        kubectl delete rolebinding ingress-nginx-admission -n ingress-nginx
+        kubectl delete ns ingress-nginx

@@ -1,0 +1,43 @@
+---
+- hosts: leadMaster
+  become: true
+  gather_facts: true
+  vars:
+    - not_found: "helm: not found"
+    - version: "version.BuildInfo"
+    - helm_flag: false
+  vars_files:
+    - ../../vars/main.yml
+  tasks:
+    - name: register helm version if exist
+      shell: helm version
+      register: helm_version
+      ignore_errors: yes
+
+    - name: check if helm is installed
+      set_fact:
+        helm_flag: true
+      when: "version in helm_version.stdout"
+
+    - name: install helm
+      include: helm_tasks.yml
+      when: "not_found in helm_version.stderr"
+
+    - name: uninstall openfaas application
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      kubernetes.core.helm:
+        name: openfaas
+        state: absent
+        release_namespace: openfaas
+
+    - name: uninstall other remaining resources
+      ignore_errors: yes
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      shell: |
+        kubectl delete namespace openfaas openfaas-fn
+
+    - name: uninstall helm
+      include: disable_helm_tasks.yml
+      when: helm_flag | bool == false

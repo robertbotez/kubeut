@@ -1,0 +1,10 @@
+- name: Check if kubelet.conf exists
+  stat:
+    path: "/etc/kubernetes/kubelet.conf"
+  register: kubelet_conf
+
+- name: Joining the cluster
+  shell: "{{ hostvars[groups['leadMaster'][0]].token }} --control-plane --certificate-key {{hostvars[groups['leadMaster'][0]].cert_key }} --ignore-preflight-errors all"
+  delay: 10
+  retries: 5
+  when: (not kubelet_conf.stat.exists) and (hostvars[groups['leadMaster'][0]].token is defined)

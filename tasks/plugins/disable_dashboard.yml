@@ -1,0 +1,41 @@
+---
+- hosts: leadMaster
+  become: true
+  gather_facts: true
+  vars:
+    - not_found: "helm: not found"
+    - version: "version.BuildInfo"
+    - helm_flag: false
+  vars_files:
+    - ../../vars/main.yml
+  tasks:
+    - name: register helm version if exist
+      shell: helm version
+      register: helm_version
+      ignore_errors: yes
+
+    - name: check if helm is installed
+      set_fact:
+        helm_flag: true
+      when: "version in helm_version.stdout"
+
+    - name: uninstall dashboard plugin
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      kubernetes.core.helm:
+        name: kubernetes-dashboard
+        state: absent
+        release_namespace: default
+
+    - name: uninstall other remaining resources
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      shell: |
+        kubectl delete clusterrole kubernetes-dashboard-metrics
+        kubectl delete clusterrolebinding kubernetes-dashboard-metrics
+        kubectl delete sa dashboard-admin -n kube-system
+        kubectl delete clusterrolebinding cluster-admin-rolebinding -n kube-system
+
+    - name: uninstall helm
+      include: disable_helm_tasks.yml
+      when: helm_flag | bool == false

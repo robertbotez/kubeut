@@ -1,0 +1,194 @@
+---
+# tasks file for pre-reqs
+- name: Find out the OS
+  #gather_facts: yes
+  block:
+    - name: Distribution
+      debug: msg="{{ ansible_distribution }}"
+    - name: Distribution version
+      debug: msg="{{ ansible_distribution_version }}"
+    - name: Distribution major version
+      debug: msg="{{ ansible_distribution_major_version }}"
+
+- name: disable requiretty in sudo, so that syncronise works
+  lineinfile:
+    dest: /etc/sudoers
+    regexp: '^(Defaults\s+requiretty)$'
+    line: '# \1'
+    backrefs: yes
+# name: Set Proxy
+# template:
+#   src: "{{ item }}.j2"
+#   dest: "/etc/apt/apt.conf.d/{{ item }}"
+#   owner: root
+#   group: root
+#   mode: 0644
+# loop:
+#   - 80proxy
+
+- name: Update apt-get repo and cache
+  apt: update_cache=yes force_apt_get=yes cache_valid_time=3600
+
+- name: Updgrade all apt packages
+  apt: upgrade=dist force_apt_get=yes
+
+- name: Update /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    insertafter: EOF
+    line: "{{ lookup('file', 'hosts') }}"
+
+- name: Installing and configuring Docker
+  block:
+    - name: Docker - Install reqyured system packages
+      apt: name={{ item }} state=latest update_cache=yes
+      loop: [ 'apt-transport-https', 'ca-certificates', 'curl', 'gnupg', 'lsb-release', 'python3-pip']
+
+    - name: Add Docker GPG apt Key
+      #environment:
+      #http_proxy: "{{ httpProxy }}"
+      #https_proxy: "{{ httpsProxy }}"
+      apt_key:
+        url: "{{ docker.gpgkey_ubuntu }}"
+        state: present
+
+    - name: Add Docker Repository
+      apt_repository:
+        repo: "{{ docker.baseurl_ubuntu }}"
+        state: present
+
+    - name: Update apt and install docker-ce, docker-ce-cli and containerd.io
+      apt: update_cache=yes name={{ item }} state=latest
+      loop: [ 'docker-ce', 'docker-ce-cli', 'containerd.io']
+
+    - name: Creating Docker config directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0644'
+        owner: root
+        group: root
+      loop:
+        - /etc/docker
+        - /etc/systemd/system/docker.service.d
+
+#    # - name: Configuring Docker service
+#    #   copy:
+#    #     src: files/docker_cfg.json
+#    #     dest: /etc/docker/daemon.json
+#    #     owner: root
+#    #     group: root
+#    #     mode: 0644
+#
+
+#   - name: Configuring Docker proxy
+#     template:
+#       src: "{{ item }}.conf.j2"
+#       dest: "/etc/systemd/system/docker.service.d/{{ item }}.conf"
+#       owner: root
+#       group: root
+#       mode: 0644
+#     loop:
+#       - http-proxy
+
+    - name: Create daemon.json
+      file:
+        path: /etc/docker/daemon.json
+        state: touch
+
+    - name: Set cgroup driver to systemd
+      shell: echo '{"exec-opts":["native.cgroupdriver=systemd"]}' >> /etc/docker/daemon.json
+
+    - name: Enable and start Docker service
+      systemd:
+        name: docker
+        daemon_reload: yes
+        enabled: true
+        state: restarted
+
+    - name: Install docker module pip3
+      #environment:
+      #http_proxy: "{{ httpProxy }}"
+      #https_proxy: "{{ httpsProxy }}"
+      pip:
+        name: docker
+        executable: pip3
+
+- name: Login with DockerHub account
+  community.docker.docker_login:
+    username: "{{ docker.dockerHub_id }}"
+    password: "{{ docker.dockerHub_passwd }}"
+        #email: "{{ docker.dockerHub_email }}"
+
+- name: Load br_netfilter module
+  community.general.modprobe:
+    name: br_netfilter
+    state: present
+
+- name: Ensure net.bridge.bridge-nf-call-iptables is set to 1
+  sysctl:
+    name: "{{ item }}"
+    value: "1"
+    state: present
+  loop:
+    - net.bridge.bridge-nf-call-iptables
+    - net.bridge.bridge-nf-call-ip6tables
+
+# - name: Check and open required ports
+#   ufw:
+#     state: enabled
+#     rule: allow
+#     direction: in
+#     proto: tcp
+#     port: "{{ item }}"
+#   loop: [ '22', '6443', '2379:2380', '10250:10252', '30000:32767']
+
+- name: Setting up kubeadm, kubelet and kubectl
+  block:
+    - name: Adding Kubernetes GPG apt key
+      #environment:
+      #http_proxy: "{{ httpProxy }}"
+      #https_proxy: "{{ httpsProxy }}"
+      apt_key:
+        url: "{{ kubernetes.gpgkey_debian }}"
+        state: present
+
+    - name: Add Kubernetes Repository
+      apt_repository:
+        repo: "{{ kubernetes.baseurl_debian }}"
+        state: present
+        filename: kubernetes.list
+
+    - name: Update apt and Install kubeadm, kubelet and kubectl
+      apt: update_cache=yes force=yes name={{ item }}
+      loop: "{{ kubernetes.packages_debian }}"
+
+      #- name: Detect Docker's cgroup driver
+      #shell: docker info 2>/dev/null | grep -i "cgroup driver" | cut -d":" -f2 | tr -d " "
+      #register: docker_cgroup_driver
+
+      #- name: Set cgroup for kubelet
+      #lineinfile:
+      #path: /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+      #insertafter: '[Service]'
+      #line: 'Environment="KUBELET_EXTRA_ARGS=--cgroup-driver={{docker_cgroup_driver.stdout}}"'
+
+- name: Disabling swap
+  block:
+    - name: Disable system swap
+      shell: "swapoff -a"
+
+    - name: Remove current swaps from fstab
+      lineinfile:
+        dest: /etc/fstab
+        regexp: '(?i)^([^#][\S]+\s+(none|swap)\s+swap.*)'
+        line: '# \1'
+        backrefs: yes
+        state: present
+
+- name: Enable and start kubelet service
+  systemd:
+    name: kubelet
+    daemon_reload: yes
+    state: started
+    enabled: yes

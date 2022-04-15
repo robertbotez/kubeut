@@ -1,0 +1,265 @@
+---
+# tasks file for pre-reqs
+- name: Find out the OS
+  #gather_facts: yes
+  block:
+    - name: Distribution
+      debug: msg="{{ ansible_distribution }}"
+    - name: Distribution version
+      debug: msg="{{ ansible_distribution_version }}"
+    - name: Distribution major version
+      debug: msg="{{ ansible_distribution_major_version }}"
+
+- name: Set Proxy
+  lineinfile:
+    path: /etc/dnf/dnf.conf
+    line: 'proxy=http://cache.utcluj.ro:3128'
+    insertafter: 'skip_if*'
+
+- name: Updating the system, this may take a while
+  dnf:
+    name: "*"
+    state: latest
+  delay: 5
+  retries: 5
+
+- name: Update /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    insertafter: EOF
+    line: "{{ lookup('file', 'hosts') }}"
+
+- name: Install requirements
+  dnf: name={{ item }}
+  loop: ['python3-pip', 'dnf-plugins-core']
+
+- name: Installing and configuring Docker
+  block:
+    - name: Addinng Docker dnf plugins core
+#      environment:
+#        http_proxy: "{{ httpProxy }}"
+#        https_proxy: "{{ httpsProxy }}"
+      dnf:
+        name: "{{ item }}"
+        state: present
+      loop: ['dnf-plugins-core']
+
+    - name: Add dnf docker repo
+      shell: sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+
+    - name: Install Docker
+#      environment:
+#        http_proxy: "{{ httpProxy }}"
+#        https_proxy: "{{ httpsProxy }}"
+      dnf:
+        name: "{{ item }}"
+        state: present
+      loop: ['docker-ce', 'docker-ce-cli', 'containerd.io']
+
+#        file: docker
+#        description: Docker repo
+#        baseurl: "{{ docker.baseurl_centos8 }}"
+#        enabled: yes
+        #gpgcheck: yes
+        #gpgkey: "{{ docker.gpgkey_centos8 }}"
+#
+#    - name: Installing Docker engine
+#      yum:
+#        name: "{{ docker.packages_centos }}"
+#        state: present
+#      # environment:
+#      #   HTTP_PROXY: "{{ httpProxy }}"
+#      #   HTTPS_PROXY: "{{ httpsProxy }}"
+#      delay: 5
+#      retries: 5
+#
+    - name: Creating Docker config directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0644'
+        owner: root
+        group: root
+      loop:
+        - /etc/docker
+        - /etc/systemd/system/docker.service.d
+#
+#    # - name: Configuring Docker service
+#    #   copy:
+#    #     src: files/docker_cfg.json
+#    #     dest: /etc/docker/daemon.json
+#    #     owner: root
+#    #     group: root
+#    #     mode: 0644
+#
+    # - name: Configuring Docker proxy
+    #   template:
+    #     src: "{{ item }}.conf.j2"
+    #     dest: "/etc/systemd/system/docker.service.d/{{ item }}.conf"
+    #     owner: root
+    #     group: root
+    #     mode: 0644
+    #   loop:
+    #     - http-proxy
+#
+
+    - name: Create daemon.json
+      file:
+        path: /etc/docker/daemon.json
+        state: touch
+
+    - name: Set cgroup driver to systemd
+      shell: echo '{"exec-opts":["native.cgroupdriver=systemd"]}' >> /etc/docker/daemon.json
+
+    - name: Enable and start Docker service
+      systemd:
+        name: docker
+        daemon_reload: yes
+        enabled: true
+        state: started
+
+    - name: Install docker module pip3
+      pip:
+        name: docker
+        executable: pip3
+
+- name: Login with DockerHub account
+  community.docker.docker_login:
+    username: "{{ docker.dockerHub_id }}"
+    password: "{{ docker.dockerHub_passwd }}"
+        #email: "{{ docker.dockerHub_email }}"
+
+- name: Ensure net.bridge.bridge-nf-call-iptables is set to 1
+  sysctl:
+    name: "{{ item }}"
+    value: "1"
+    state: present
+  loop:
+    - net.bridge.bridge-nf-call-iptables
+    - net.bridge.bridge-nf-call-ip6tables
+
+- name: Disabling Selinux
+  block:
+    - name: Disabling selinux
+      shell:
+        cmd: setenforce 0
+      ignore_errors: true
+
+    - name: Modifying selinux config
+      lineinfile:
+        path: /etc/selinux/config
+        regexp: '^SELINUX=enforcing$'
+        line: 'SELINUX=permissive'
+
+- name: Setting up kubeadm, kubelet and kubectl
+  block:
+    - name: Adding kubernetes repo
+      yum_repository:
+        name: kubernetes
+        file: kubernetes
+        description: Kubernetes repo
+        baseurl: "{{ kubernetes.baseurl_redhat }}"
+        enabled: yes
+        gpgcheck: yes
+        gpgkey: "{{ kubernetes.gpgkey_redhat }}"
+
+    - name: Installing kubeadm, kubelet and kubectl
+      yum:
+        name: "{{ kubernetes.packages_redhat }}"
+        state: present
+        # environment:
+        #   HTTP_PROXY: "{{ httpProxy }}"
+        #   HTTPS_PROXY: "{{ httpsProxy }}"
+      delay: 5
+      retries: 5
+
+- name: Disabling swap
+  block:
+    - name: Disable system swap
+      shell: "swapoff -a"
+
+    - name: Remove current swaps from fstab
+      lineinfile:
+        dest: /etc/fstab
+        regexp: '(?i)^([^#][\S]+\s+(none|swap)\s+swap.*)'
+        line: '# \1'
+        backrefs: yes
+        state: present
+
+    - name: uninstall zram
+      dnf:
+        name: zram-generator-defaults
+        state: absent
+
+- name: Enable and start kubelet service
+  systemd:
+    name: kubelet
+    daemon_reload: yes
+    state: started
+    enabled: yes
+
+#
+#- name: Ensure net.bridge.bridge-nf-call-iptables is set to 1
+#  sysctl:
+#    name: "{{ item }}"
+#    value: "1"
+#    state: present
+#  loop:
+#    - net.bridge.bridge-nf-call-iptables
+#    - net.bridge.bridge-nf-call-ip6tables
+#
+#- name: Disabling Selinux
+#  block:
+#    - name: Disabling selinux
+#      shell:
+#        cmd: setenforce 0
+#      ignore_errors: true
+#
+#    - name: Modifying selinux config
+#      lineinfile:
+#        path: /etc/selinux/config
+#        regexp: '^SELINUX=enforcing$'
+#        line: 'SELINUX=permissive'
+#
+#- name: Setting up kubeadm, kubelet and kubectl
+#  block:
+#    - name: Adding kubernetes repo
+#      yum_repository:
+#        name: kubernetes
+#        file: kubernetes
+#        description: Kubernetes repo
+#        baseurl: "{{ kubernetes.baseurl_redhat }}"
+#        enabled: yes
+#        gpgcheck: yes
+#        gpgkey: "{{ kubernetes.gpgkey_redhat }}"
+#
+#    - name: Installing kubeadm, kubelet and kubectl
+#      yum:
+#        name: "{{ kubernetes.packages_redhat }}"
+#        state: present
+#      # environment:
+#      #   HTTP_PROXY: "{{ httpProxy }}"
+#      #   HTTPS_PROXY: "{{ httpsProxy }}"
+#      delay: 5
+#      retries: 5
+#
+#- name: Disabling swap
+#  block:
+#    - name: Disable system swap
+#      shell: "swapoff -a"
+#
+#    - name: Remove current swaps from fstab
+#      lineinfile:
+#        dest: /etc/fstab
+#        regexp: '(?i)^([^#][\S]+\s+(none|swap)\s+swap.*)'
+#        line: '# \1'
+#        backrefs: yes
+#        state: present
+#
+#- name: Enable and start kubelet service
+#  systemd:
+#    name: kubelet
+#    daemon_reload: yes
+#    state: started
+#    enabled: yes
+#

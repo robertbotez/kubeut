@@ -1,0 +1,14 @@
+- name: Drain extra nodes
+  shell: |
+    kubectl drain "{{ hostvars[groups['additional-workers'][0]].inventory_hostname }}" --force --ignore-daemonsets
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  run_once: true
+
+- name: delete extra nodes
+  shell: |
+    kubectl delete node "{{ hostvars[groups['additional-workers'][0]].inventory_hostname }}"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  run_once: true
+

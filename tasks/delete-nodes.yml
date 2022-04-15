@@ -1,0 +1,19 @@
+- name: Drain and delete nodes from control plane
+  hosts: master
+  become: true
+  vars_files:
+    - vars/main.yml
+  tasks:
+    - name: Delete additional node
+      import_tasks:
+        tasks/delete-extra-nodes.yml
+
+- name: kubeadm reset on worker node
+  hosts: additional-nodes
+  become: true
+  vars_files:
+    - vars/main.yml
+  tasks:
+    - name: Kubeadm reset
+      shell: |
+        kubeadm reset

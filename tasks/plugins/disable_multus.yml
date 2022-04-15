@@ -1,0 +1,12 @@
+---
+- hosts: leadMaster
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../../vars/main.yml
+  tasks:
+    - name: disable multus cni
+      ignore_errors: yes
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      shell: kubectl delete -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset-thick-plugin.yml

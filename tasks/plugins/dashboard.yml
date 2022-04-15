@@ -1,0 +1,77 @@
+---
+- hosts: leadMaster
+  become: true
+  gather_facts: true
+  vars:
+    - not_found: "helm: not found"
+    - version: "version.BuildInfo"
+    - helm_flag: false
+  vars_files:
+    - ../../vars/main.yml
+  tasks:
+    - name: register helm version if exist
+      shell: helm version
+      register: helm_version
+      ignore_errors: yes
+
+    - name: check if helm is installed
+      set_fact:
+        helm_flag: true
+      when: "version in helm_version.stdout"
+
+    - name: install helm
+      include: helm_tasks.yml
+      when: "not_found in helm_version.stderr"
+
+    - name: add dashboard helm repo
+      kubernetes.core.helm_repository:
+        name: kubernetes-dashboard
+        repo_url: https://kubernetes.github.io/dashboard/
+
+    - name: install dashboard plugin
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      kubernetes.core.helm:
+        name: kubernetes-dashboard
+        chart_ref: kubernetes-dashboard/kubernetes-dashboard
+        update_repo_cache: True
+        release_namespace: default
+
+    - name: Installing Kubernetes module pip3
+      pip:
+        name: kubernetes
+        executable: pip3
+
+    - name: change k8s service type
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: Service
+          metadata:
+            name: kubernetes-dashboard
+            namespace: default
+          spec:
+            type: NodePort
+
+    - name: Import service account manifest file
+      template:
+        src: "../templates/sa_cluster_admin.yaml.j2"
+        dest: "/root/sa_cluster_admin.yaml"
+
+    - name: Create service account with the cluster admin role
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      shell: kubectl create -f sa_cluster_admin.yaml
+      args:
+        chdir: /root/
+
+    - name: remove sa manifest file
+      ansible.builtin.file:
+        path: /root/sa_cluster_admin.yaml
+        state: absent
+
+    - name: uninstall helm
+      include: disable_helm_tasks.yml
+      when: helm_flag | bool == false

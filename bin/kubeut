@@ -1,0 +1,337 @@
+#!/bin/bash
+
+set -e
+
+RED='\033[0;31m'
+YELLOW='\e[33m'
+GREEN='\e[32m'
+NC='\033[0m'
+bold=$(tput bold)
+normal=$(tput sgr0)
+
+function usage() {
+  cat <<EOF
+Usage:  kubeut provision/deploy/enable/debug options
+
+Commands:
+    add             Add extra workers to existing cluster
+    debug           Print on STDOUT all tasks. Run this before running other commands
+    delete          Delete additional nodes
+    deploy          Deploy Kubernetes cluster on targeted nodes
+    disable         Disable an addon
+    enable          Enable an addon
+    provision       Deploy VM on targeted infrastructure
+
+Provision specific:
+    --aws           Set the cloud provider to AWS
+    --azure         Set the cloud provider to Microsoft Azure
+    --openstack     Set the cloud provider to OpenStack
+    --vsphere       Set the cloud provider to VMware
+
+Enable/Disable specific:
+    --dashboard     Enable K8s dashboard on current cluster
+    --gpu           Enable support for GPU workloads using the NVIDIA container runtime
+    --helm          Deploy the Helm pacakge manager for Kubernetes
+    --ingress       Enable Nginx ingress controller for current cluster
+    --monitoring    Deploy Prometheus and Grafana as monitoring solutions for current cluster
+    --openfaas      Deploy OpenFaas, an open source functions framework
+
+Debug specific:
+    --on            Enable debug mode
+    --off           Disable debug mode
+EOF
+}
+
+###########
+# Options #
+###########
+
+# While current command starts with "-" parse options
+# in environment variables
+
+while [[ "$1" == "provision" ]]; do
+  option="$2"
+  case $option in
+  --openstack)
+    terraform -chdir="$KUBEUT/../terraform-config/openstack" init -var-file=$KUBEUT/../terraform-config/openstack/secret.tfvars
+    terraform -chdir="$KUBEUT/../terraform-config/openstack" plan -var-file=$KUBEUT/../terraform-config/openstack/secret.tfvars
+    terraform -chdir="$KUBEUT/../terraform-config/openstack" apply -auto-approve -var-file=$KUBEUT/../terraform-config/openstack/secret.tfvars
+    exit 0
+    ;;
+
+  --vsphere)
+    #echo "Not implemented yet"
+    terraform -chdir="$KUBEUT/../terraform-config/vsphere" init -var-file=$KUBEUT/../terraform-config/vsphere/secret.tfvars
+    terraform -chdir="$KUBEUT/../terraform-config/vsphere" plan -var-file=$KUBEUT/../terraform-config/vsphere/secret.tfvars
+    terraform -chdir="$KUBEUT/../terraform-config/vsphere" apply -auto-approve -var-file=$KUBEUT/../terraform-config/vsphere/secret.tfvars
+    exit 0
+    ;;
+
+  --azure)
+    echo "Not implemented yet"
+    exit 1
+    ;;
+
+  --aws)
+    echo "Not implemented yet"
+    exit 1
+    ;;
+
+  *)
+    echo -e "${RED}${bold}Unrecognized option for $1${NC}${normal}\n" >&2
+    usage
+    exit 1
+    ;;
+  esac
+done
+
+while [[ "$1" == "enable" ]]; do
+  option="$2"
+  case $option in
+  --gpu)
+    echo -e -n "${YELLOW}${bold}Plugin is being enabled. Please wait... "
+    if ansible-playbook -i $KUBEUT/../inventory.yml $KUBEUT/../tasks/plugins/nvidia_container.yml && ansible-playbook -i $KUBEUT/../inventory.yml $KUBEUT/../tasks/plugins/nvidia_plugin.yml
+    then
+      echo -e "\n${GREEN}${bold}The selected plugin was enabled${NC}${normal}"
+    else
+      echo -e "\n${RED}${bold}An error ocurred. Activate debug mode to troubleshoot the operation.${NC}${normal}"
+    fi
+    exit 0
+    ;;
+
+  --helm)
+    echo -e -n "${YELLOW}${bold}Plugin is being enabled. Please wait... "
+    if ansible-playbook -i $KUBEUT/../inventory.yml $KUBEUT/../tasks/plugins/helm.yml
+    then
+      echo -e "\n${GREEN}${bold}The selected plugin was enabled${NC}${normal}"
+    else
+      echo -e "\n${RED}${bold}An error ocurred. Activate debug mode to troubleshoot the operation.${NC}${normal}"
+    fi
+    exit 0
+    ;;
+
+  --openfaas)
+    echo -e -n "${YELLOW}${bold}Plugin is being enabled. Please wait... "
+    if ansible-playbook -i $KUBEUT/../inventory.yml $KUBEUT/../tasks/plugins/openfaas.yml
+    then
+      echo -e "\n${GREEN}${bold}The selected plugin was enabled${NC}${normal}"
+    else
+      echo -e "\n${RED}${bold}An error ocurred. Activate debug mode to troubleshoot the operation.${NC}${normal}"
+    fi
+    exit 0
+    ;;
+
+  --dashboard)
+    echo -e -n "${YELLOW}${bold}Plugin is being enabled. Please wait... "
+    if ansible-playbook -i $KUBEUT/../inventory.yml $KUBEUT/../tasks/plugins/dashboard.yml
+    then
+      echo -e "\n${GREEN}${bold}The selected plugin was enabled${NC}${normal}"
+    else
+      echo -e "\n${RED}${bold}An error ocurred. Activate debug mode to troubleshoot the operation.${NC}${normal}"
+    fi
+    exit 0
+    ;;
+
+  --monitoring)
+    echo -e -n "${YELLOW}${bold}Plugin is being enabled. Please wait... "
+    if ansible-playbook -i $KUBEUT/../inventory.yml $KUBEUT/../tasks/plugins/monitoring.yml
+    then
+      echo -e "\n${GREEN}${bold}The selected plugin was enabled${NC}${normal}"
+    else
+      echo -e "\n${RED}${bold}An error ocurred. Activate debug mode to troubleshoot the operation.${NC}${normal}"
+    fi
+    exit 0
+    ;;
+
+  --multus)
+    echo -e -n "${YELLOW}${bold}Plugin is being enabled. Please wait... "
+    if ansible-playbook -i $KUBEUT/../inventory.yml $KUBEUT/../tasks/plugins/multus.yml
+    then
+      echo -e "\n${GREEN}${bold}The selected plugin was enabled${NC}${normal}"
+    else
+      echo -e "\n${RED}${bold}An error ocurred. Activate debug mode to troubleshoot the operation.${NC}${normal}"
+    fi
+    exit 0
+    ;;
+
+  --ingress)
+    echo -e -n "${YELLOW}${bold}Plugin is being enabled. Please wait... "
+    if ansible-playbook -i $KUBEUT/../inventory.yml $KUBEUT/../tasks/plugins/ingress.yml
+    then
+      echo -e "\n${GREEN}${bold}The selected plugin was enabled${NC}${normal}"
+    else
+      echo -e "\n${RED}${bold}An error ocurred. Activate debug mode to troubleshoot the operation.${NC}${normal}"
+    fi
+    exit 0
+    ;;
+
+  *)
+    echo -e "${RED}${bold}Unrecognized option for $1${NC}${normal}\n" >&2
+    usage
+    exit 1
+    ;;
+
+  esac
+done
+
+while [[ "$1" == "debug" ]]; do
+  option="$2"
+  case $option in
+  --on)
+    crudini --set $KUBEUT/../ansible.cfg defaults stdout_callback default
+    echo -e "${GREEN}${bold}Debug mode was enabled${NC}${normal}"
+    exit 0
+    ;;
+
+  --off)
+    crudini --set $KUBEUT/../ansible.cfg defaults stdout_callback null
+    echo -e "${RED}${bold}Debug mode was disabled${NC}${normal}"
+    exit 0
+    ;;
+
+  *)
+    echo -e "${RED}${bold}Unrecognized option for $1${NC}${normal}\n" >&2
+    usage
+    exit 1
+    ;;
+
+  esac
+done
+
+while [[ "$1" == "disable" ]]; do
+  option="$2"
+  case $option in
+  --gpu)
+    echo -e -n "${YELLOW}${bold}Plugin is being disabled. Please wait... "
+    if ansible-playbook -i $KUBEUT/../inventory.yml $KUBEUT/../tasks/plugins/disable_gpu.yml
+    then
+      echo -e "\n${RED}${bold}The selected plugin was disabled${NC}${normal}"
+    else
+      echo -e "\n${RED}${bold}An error ocurred. Activate debug mode to troubleshoot the operation.${NC}${normal}"
+    fi
+    exit 0
+    ;;
+
+  --helm)
+    echo -e -n "${YELLOW}${bold}Plugin is being disabled. Please wait... "
+    if ansible-playbook -i $KUBEUT/../inventory.yml $KUBEUT/../tasks/plugins/disable_helm.yml
+    then
+      echo -e "\n${RED}${bold}The selected plugin was disabled${NC}${normal}"
+    else
+      echo -e "\n${RED}${bold}An error ocurred. Activate debug mode to troubleshoot the operation.${NC}${normal}"
+    fi
+    exit 0
+    ;;
+
+  --openfaas)
+    echo -e -n "${YELLOW}${bold}Plugin is being disabled. Please wait... "
+    if ansible-playbook -i $KUBEUT/../inventory.yml $KUBEUT/../tasks/plugins/disable_openfaas.yml
+    then
+      echo -e "\n${RED}${bold}The selected plugin was disabled${NC}${normal}"
+    else
+      echo -e "\n${RED}${bold}An error ocurred. Activate debug mode to troubleshoot the operation.${NC}${normal}"
+    fi
+    exit 0
+    ;;
+
+  --dashboard)
+    echo -e -n "${YELLOW}${bold}Plugin is being disabled. Please wait... "
+    if ansible-playbook -i $KUBEUT/../inventory.yml $KUBEUT/../tasks/plugins/disable_dashboard.yml
+    then
+      echo -e "\n${GREEN}${bold}The selected plugin was disabled${NC}${normal}"
+    else
+      echo -e "\n${RED}${bold}An error ocurred. Activate debug mode to troubleshoot the operation.${NC}${normal}"
+    fi
+    exit 0
+    ;;
+
+  --monitoring)
+    echo -e -n "${YELLOW}${bold}Plugin is being disabled. Please wait... "
+    if ansible-playbook -i $KUBEUT/../inventory.yml $KUBEUT/../tasks/plugins/disable_monitoring.yml
+    then
+      echo -e "\n${GREEN}${bold}The selected plugin was disabled${NC}${normal}"
+    else
+      echo -e "\n${RED}${bold}An error ocurred. Activate debug mode to troubleshoot the operation.${NC}${normal}"
+    fi
+    exit 0
+    ;;
+
+  --multus)
+    echo -e -n "${YELLOW}${bold}Plugin is being disabled. Please wait... "
+    if ansible-playbook -i $KUBEUT/../inventory.yml $KUBEUT/../tasks/plugins/disable_multus.yml
+    then
+      echo -e "\n${GREEN}${bold}The selected plugin was disabled${NC}${normal}"
+    else
+      echo -e "\n${RED}${bold}An error ocurred. Activate debug mode to troubleshoot the operation.${NC}${normal}"
+    fi
+    exit 0
+    ;;
+
+  --ingress)
+    echo -e -n "${YELLOW}${bold}Plugin is being enabled. Please wait... "
+    if ansible-playbook -i $KUBEUT/../inventory.yml $KUBEUT/../tasks/plugins/disable_ingress.yml
+    then
+      echo -e "\n${GREEN}${bold}The selected plugin was enabled${NC}${normal}"
+    else
+      echo -e "\n${RED}${bold}An error ocurred. Activate debug mode to troubleshoot the operation.${NC}${normal}"
+    fi
+    exit 0
+    ;;
+
+  *)
+    echo -e "${RED}${bold}Unrecognized option for $1${NC}${normal}\n" >&2
+    usage
+    exit 1
+    ;;
+
+  esac
+done
+
+###############
+# Subcommands #
+###############
+
+subcommand="$1"
+case "$subcommand" in
+
+help)
+
+  usage
+  exit
+  ;;
+
+deploy)
+  sh /$KUBEUT/../clear-sshkeygen.sh > /dev/null 2>&1
+  sudo sh /$KUBEUT/../clear-sshkeygen.sh > /dev/null 2>&1
+  echo -e -n "${YELLOW}${bold}Cluster is being deployed. Please wait... "
+  if ansible-playbook -i $KUBEUT/../inventory.yml $KUBEUT/../main.yml
+  then
+    echo -e "\n${GREEN}${bold}Cluster was deployed succesfully.${NC}${normal}"
+  else
+    echo -e "\n${RED}${bold}An error ocurred. Activate debug mode to troubleshoot the deployment.${NC}${normal}"
+  fi
+  exit
+  ;;
+
+provision)
+
+  echo -e "${RED}${bold}Specify a flag${NC}${normal}"
+  usage
+  exit
+  ;;
+
+enable)
+
+  echo -e "${RED}${bold}Specify a feature${NC}${normal}\n"
+  usage
+  exit
+  ;;
+
+disable)
+
+  echo -e "${RED}${bold}Specify a feature to be disabled${NC}${normal}\n"
+  usage
+  exit
+  ;;
+
+esac

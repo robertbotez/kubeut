@@ -1,0 +1,20 @@
+---
+- hosts: leadMaster
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../../vars/main.yml
+  tasks:
+    - name: install arkade
+      shell: |
+        curl -SLsf https://get.arkade.dev/ | sudo sh
+
+    - name: install openfaas
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      shell: |
+        arkade install openfaas --basic-auth-password {{openfaas_password}} --set=faasIdler.dryRun=false
+
+    - name: install faas-cli (optional)
+      shell: |
+        curl -sL https://cli.openfaas.com | sudo sh

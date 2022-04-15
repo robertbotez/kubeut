@@ -1,0 +1,66 @@
+---
+# vars file for kube_ansible
+kubeadm:
+  init:
+    podNetworkCidr: "192.168.0.0/16"
+    kubernetesVersion: "1.22.3"
+    apiServerBindPort: 6443
+    controlPlaneEndpoint: "10.60.60.254:6443"
+  join:
+    ttl: "1h"
+    description: "Worker nodes joining token. Created by Ansible"
+
+docker:
+  baseurl_centos: "https://download.docker.com/linux/centos/7/$basearch/stable/"
+  gpgkey_centos: "https://download.docker.com/linux/centos/gpg"
+  packages_centos:
+  # - <packet_name>-<version(optional)>
+    - docker-ce-20.10.10
+    - docker-ce-cli-20.10.10
+    - containerd.io
+  dockerHub_id: ""
+  dockerHub_passwd: ""
+  dockerHub_email: ""
+
+  baseurl_centos8: "https://download.docker.com/linux/centos/docker-ce.repo"
+  baseurl_ubuntu: "deb https://download.docker.com/linux/ubuntu bionic stable"
+  baseurl_debian: "deb https://download.docker.com/linux/debian stretch stable"
+  #baseurl_nvidia: "https://nvidia.github.io/nvidia-docker/{{distribution_nvidia}}/nvidia-docker.list"
+
+  gpgkey_ubuntu: "https://download.docker.com/linux/ubuntu/gpg"
+  gpgkey_debian: "https://download.docker.com/linux/debian/gpg"
+  gpgkey_nvidia: "https://nvidia.github.io/nvidia-docker/gpgkey"
+
+
+kubernetes:
+  ha: true
+  baseurl_redhat: "https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch"
+  gpgkey_redhat: "https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg"
+  packages_redhat:
+  # - <packet_name>-<version(optional)>
+    - kubelet-1.22.3-0
+    - kubeadm-1.22.3
+    - kubectl-1.22.3
+
+  baseurl_debian: "deb https://apt.kubernetes.io/ kubernetes-xenial main"
+  gpgkey_debian: "https://packages.cloud.google.com/apt/doc/apt-key.gpg"
+  packages_debian:
+    - kubelet=1.22.3-00
+    - kubeadm=1.22.3-00
+    - kubectl=1.22.3-00
+
+cni:
+  manifests:
+    - "tigera-operator.yaml"
+    - "calico-custom-resource.yaml"
+  namespaces:
+    - "tigera-operator-ns.yaml"
+
+httpProxy: "http://cache.utcluj.ro:3128"
+httpsProxy: "http://cache.utcluj.ro:3128"
+
+cuda_repository: "https://developer.download.nvidia.com/compute/cuda/repos/{{distribution}}/x86_64/cuda-{{distribution}}.pin"
+cuda_gpgkey: "https://developer.download.nvidia.com/compute/cuda/repos/{{distribution}}/x86_64/7fa2af80.pub"
+cuda_baseurl: "deb http://developer.download.nvidia.com/compute/cuda/repos/{{distribution}}/x86_64 /"
+
+openfaas_password: ""

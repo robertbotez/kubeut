@@ -1,0 +1,41 @@
+- name: Setting up pre-requisites
+  hosts: additionalWorkers
+  become: true
+  gather_facts: true
+  vars_files:
+    - vars/main.yml
+  tasks:
+    - name: Setting up system
+      import_tasks:
+        tasks/01_prereqs_yum.yml
+      when: ansible_os_family == "RedHat" and ansible_distribution == "CentOS" and ansible_distribution_major_version <= '7'
+    - name: Setting up system
+      import_tasks:
+        tasks/01_prereqs_ubuntu.yml
+      when: ansible_os_family == "Debian" and ansible_distribution == "Ubuntu"
+    - name: Setting up system
+      import_tasks:
+        tasks/01_prereqs_debian.yml
+      when: ansible_os_family == "Debian" and ansible_distribution == "Debian"
+    - name: Setting up system
+      import_tasks:
+        tasks/01_prereqs_dnf.yml
+      when: ansible_os_family == "RedHat" and ansible_distribution == "CentOS" and ansible_distribution_major_version > '7'
+
+- name: Setting up control plane
+  hosts: master
+  become: true
+  vars_files:
+    - vars/main.yml
+  tasks:
+    - name: Create Join Token
+      import_tasks:
+        tasks/creating-join-token-new-nodes.yml
+
+- name: Setting up worker nodes
+  hosts: additional-workers
+  become: true
+  tasks:
+    - name: Setting up control plane
+      import_tasks:
+        tasks/03_worker_node.yml

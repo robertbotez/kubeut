@@ -1,0 +1,65 @@
+---
+- hosts: leadMaster
+  become: true
+  gather_facts: true
+  vars:
+    - not_found: "helm: not found"
+    - version: "version.BuildInfo"
+    - helm_flag: false
+  vars_files:
+    - ../../vars/main.yml
+  tasks:
+    - name: register helm version if exist
+      shell: helm version
+      register: helm_version
+      ignore_errors: yes
+
+    - name: check if helm is installed
+      set_fact:
+        helm_flag: true
+      when: "version in helm_version.stdout"
+
+    - name: install helm
+      include: helm_tasks.yml
+      when: "not_found in helm_version.stderr"
+
+    - name: add monitoring helm repo
+      kubernetes.core.helm_repository:
+        name: "{{ item }}"
+        repo_url: https://prometheus-community.github.io/helm-charts
+      loop: [ 'prometheus-community', 'stable']
+      ignore_errors: yes
+
+
+    - name: install monitoring plugin
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      kubernetes.core.helm:
+        name: prometheus
+        chart_ref: prometheus-community/kube-prometheus-stack
+        update_repo_cache: True
+        release_namespace: monitoring
+        create_namespace: True
+
+    - name: Installing Kubernetes module pip3
+      pip:
+        name: kubernetes
+        executable: pip3
+
+    - name: change k8s service type
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: Service
+          metadata:
+            name: "{{ item }}"
+            namespace: monitoring
+          spec:
+            type: NodePort
+      loop: [ 'prometheus-grafana', 'prometheus-kube-prometheus-prometheus']
+
+    - name: uninstall helm
+      include: disable_helm_tasks.yml
+      when: helm_flag | bool == false

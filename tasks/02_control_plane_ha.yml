@@ -1,0 +1,95 @@
+- name: Check if the kubernetes cluster is already initialized
+  stat:
+    path: "/etc/kubernetes/pki/ca.key"
+  register: kubeadm_ca
+
+- name: Setting up the kubernetes cluster
+  block:
+    - name: Pulling control plane Docker images
+      shell: kubeadm config images pull --kubernetes-version={{ kubeadm.init.kubernetesVersion }} --image-repository k8s.gcr.io
+#     #environment:
+#     #  HTTP_PROXY: "{{ httpProxy }}"
+#     #  HTTPS_PROXY: "{{ httpsProxy }}"
+
+    - name: Initializing the cluster
+      shell: |
+        kubeadm init --pod-network-cidr={{ kubeadm.init.podNetworkCidr }} \
+                     --kubernetes-version={{ kubeadm.init.kubernetesVersion }} \
+                     --control-plane-endpoint={{ kubeadm.init.controlPlaneEndpoint }} \
+                     --upload-certs \
+                     --ignore-preflight-errors all
+      register: init_cluster
+
+    - name: Create ns directory
+      file:
+        path: /tmp/ns
+        state: directory
+
+    - name: Set the namespace
+      template:
+        src: "{{ item }}.j2"
+        dest: "/tmp/ns/{{ item }}"
+        owner: root
+        group: root
+        mode: 0644
+      loop: "{{ cni.namespaces }}"
+
+    - name: Deploying the namespace
+      shell: "kubectl apply -f /tmp/ns/{{ item }}"
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      loop: "{{ cni.namespaces }}"
+
+    - name: Configure secret for deploying CNI
+      shell: "kubectl create secret docker-registry docker-regcred --docker-server=https://index.docker.io/v1/ --docker-username={{ docker.dockerHub_id }} --docker-password={{ docker.dockerHub_passwd }} --namespace=tigera-operator"
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: Configure secret for deploying CNI II
+      shell: "kubectl create secret docker-registry docker-regcred --docker-server=https://index.docker.io/v1/ --docker-username={{ docker.dockerHub_id }} --docker-password={{ docker.dockerHub_passwd }}"
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: Copying CNI manifests
+      template:
+        src: "{{ item }}.j2"
+        dest: "/tmp/{{ item }}"
+        owner: root
+        group: root
+        mode: 0644
+      loop: "{{ cni.manifests }}"
+
+    - name: Deploying CNI
+      shell: "kubectl apply -f /tmp/{{ item }}"
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      loop: "{{ cni.manifests }}"
+
+    - name: Checking master node status
+      shell: "kubectl get nodes | grep -wi ready"
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: master_status
+      until: (master_status.stdout_lines|length != 0)
+      delay: 10
+      retries: 15
+  when: not kubeadm_ca.stat.exists
+
+- name: Re-upload certs in the master node
+  shell: |
+    kubeadm init phase upload-certs --upload-certs
+  register: crt_key
+  run_once: true
+
+- name: Creating join token
+  shell: |
+    kubeadm token create --ttl={{ kubeadm.join.ttl }} \
+                         --description="{{ kubeadm.join.description }}" \
+                         --print-join-command
+  register: join_token
+  run_once: true
+
+- name: Set fact
+  set_fact:
+    token: "{{ join_token.stdout_lines[0] }}"
+    cert_key: "{{ crt_key.stdout_lines[2] }}"

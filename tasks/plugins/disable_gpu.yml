@@ -1,0 +1,82 @@
+---
+- hosts: leadMaster
+  become: true
+  gather_facts: true
+  vars:
+    - not_found: "helm: not found"
+    - version: "version.BuildInfo"
+    - helm_flag: false
+  vars_files:
+    - ../../vars/main.yml
+  tasks:
+    - name: register helm version if exist
+      shell: helm version
+      register: helm_version
+      ignore_errors: yes
+
+    - name: check if helm is installed
+      set_fact:
+        helm_flag: true
+      when: "version in helm_version.stdout"
+
+    - name: install helm
+      include: helm_tasks.yml
+      when: "not_found in helm_version.stderr"
+
+    - name: remove nvidia helm repo
+      kubernetes.core.helm_repository:
+        name: nvdp
+        repo_state: absent
+
+    - name: uninstall nvidia plugin
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      kubernetes.core.helm:
+        name: nvidia-device-plugin
+        state: absent
+        release_namespace: default
+
+    - name: uninstall helm
+      include: disable_helm_tasks.yml
+      when: helm_flag | bool == false
+
+- hosts: workers
+  become: true
+  gather_facts: true
+  vars_files:
+    - ../vars/main.yml
+  tasks:
+    - name: update Docker daemon config
+      ansible.builtin.copy:
+        remote_src: yes
+        src: /etc/docker/daemon_old.json
+        dest: /etc/docker/daemon.json
+
+    - name: remove old daemon config
+      ansible.builtin.file:
+        path: /etc/docker/daemon_old.json
+        state: absent
+
+    - name: Restart Docker service
+      systemd:
+        name: docker
+        daemon_reload: yes
+        enabled: true
+        state: restarted
+
+    - name: Remove nvidia-docker service
+      apt: name={{ item }} state=absent
+      loop: ['nvidia-docker2']
+
+    - name: remove nvidia runtime gpg key
+      apt_key:
+        url: "{{ docker.gpgkey_nvidia }}"
+        state: absent
+
+    - name: remove nvidia apt repository
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/nvidia-docker.list
+        state: absent
+
+    - name: update apt
+      apt: update_cache=yes force_apt_get=yes cache_valid_time=3600
